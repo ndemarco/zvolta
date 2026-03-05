@@ -1,5 +1,5 @@
-# Binary
-zvolta
+# Binary (root only, not cmd/zvolta/ source dir)
+/zvolta
 
 # Go
 *.exe
