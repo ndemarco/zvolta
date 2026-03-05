@@ -1,0 +1,19 @@
+# Zvolta server configuration
+# See DECISIONS.md for rationale behind each setting.
+
+# Ownership prefix for snapshot names. Zvolta only manages snapshots whose names
+# start with this prefix. Must not be empty.
+# snapshot_prefix = "zvolta_"
+
+# Path to the zfs binary.
+# zfs_binary = "zfs"
+
+# Log level: "debug", "info", "warn", "error".
+# log_level = "info"
+
+# Offset applied to all clock-aligned snapshot schedules. Use Go duration syntax.
+# Examples: "5m" (delay 5 minutes), "-2m" (advance 2 minutes), "0s" (no offset).
+# schedule_offset = "0s"
+
+# Root datasets to manage. Zvolta reads policies recursively under each root.
+# datasets = ["tank/data", "tank/home"]

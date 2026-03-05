@@ -1,0 +1,18 @@
+[Unit]
+Description=Zvolta ZFS snapshot lifecycle management daemon
+After=zfs.target
+Wants=zfs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zvolta daemon --config /etc/zvolta/zvolta.toml
+Restart=on-failure
+RestartSec=10
+
+# Logging goes to stdout, captured by journal
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=zvolta
+
+[Install]
+WantedBy=multi-user.target
