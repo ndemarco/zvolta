@@ -1,0 +1,57 @@
+version: 2
+
+project_name: zvolta
+
+builds:
+  - main: ./cmd/zvolta
+    binary: zvolta
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+nfpms:
+  - id: zvolta
+    package_name: zvolta
+    vendor: NickyDoes
+    homepage: https://github.com/ndemarco/zvolta
+    maintainer: Nick DeMarco
+    description: ZFS snapshot lifecycle management with Windows Previous Versions integration
+    license: GPL-3.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/local/bin
+    contents:
+      - src: configs/zvolta.toml.example
+        dst: /etc/zvolta/zvolta.toml.example
+        type: config
+      - src: configs/zvolta.service
+        dst: /lib/systemd/system/zvolta.service
+        type: config
+    scripts:
+      postinstall: scripts/postinstall.sh
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: ndemarco
+    name: zvolta
