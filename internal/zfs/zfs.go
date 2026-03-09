@@ -126,6 +126,14 @@ func (c *Client) SetProperty(dataset, property, value string) error {
 	return err
 }
 
+// InheritProperty removes a local property value so the dataset inherits from
+// its parent. This is different from SetProperty with "-" which sets the literal
+// string "-" as the value.
+func (c *Client) InheritProperty(dataset, property string) error {
+	_, err := c.Cmd.Run("inherit", property, dataset)
+	return err
+}
+
 // CreateSnapshot creates a ZFS snapshot.
 func (c *Client) CreateSnapshot(dataset, snapName string) error {
 	full := fmt.Sprintf("%s@%s", dataset, snapName)

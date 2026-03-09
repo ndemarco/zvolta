@@ -28,13 +28,15 @@ func setProps(t *testing.T, client *zfs.Client, dataset string, props map[string
 func clearProps(t *testing.T, client *zfs.Client, dataset string) {
 	t.Helper()
 	for _, prop := range AllProperties() {
-		_ = client.SetProperty(dataset, prop, "-")
+		_ = client.InheritProperty(dataset, prop)
 	}
 }
 
 func TestIntegrationResolve(t *testing.T) {
 	engine := testEngine()
 	client := engine.ZFS
+	clearProps(t, client, testPool)
+	clearProps(t, client, testDataset)
 
 	setProps(t, client, testDataset, map[string]string{
 		"org.zvolta:autosnap":                 "on",
@@ -77,6 +79,8 @@ func TestIntegrationResolve(t *testing.T) {
 func TestIntegrationInheritance(t *testing.T) {
 	engine := testEngine()
 	client := engine.ZFS
+	clearProps(t, client, testPool)
+	clearProps(t, client, testDataset)
 
 	// Set on parent pool
 	setProps(t, client, testPool, map[string]string{
@@ -115,6 +119,8 @@ func TestIntegrationInheritance(t *testing.T) {
 func TestIntegrationResolveAll(t *testing.T) {
 	engine := testEngine()
 	client := engine.ZFS
+	clearProps(t, client, testPool)
+	clearProps(t, client, testDataset)
 
 	setProps(t, client, testPool, map[string]string{
 		"org.zvolta:autosnap":        "on",
@@ -128,7 +134,6 @@ func TestIntegrationResolveAll(t *testing.T) {
 		t.Fatalf("ResolveAll: %v", err)
 	}
 
-	// Should find at least the pool and child dataset
 	if len(policies) < 2 {
 		t.Errorf("expected at least 2 policies, got %d", len(policies))
 	}
@@ -150,10 +155,8 @@ func TestIntegrationResolveAll(t *testing.T) {
 func TestIntegrationDefaultDisabled(t *testing.T) {
 	engine := testEngine()
 	client := engine.ZFS
-
-	// Clear everything — should default to autosnap=off
-	clearProps(t, client, testDataset)
 	clearProps(t, client, testPool)
+	clearProps(t, client, testDataset)
 
 	p, err := engine.Resolve(testDataset)
 	if err != nil {

@@ -10,6 +10,16 @@ import (
 const testPool = "zvolta-test"
 const testDataset = "zvolta-test/data"
 
+func cleanProps(t *testing.T, client *Client, dataset string) {
+	t.Helper()
+	for _, prop := range []string{
+		"org.zvolta:autosnap", "org.zvolta:autoprune",
+		"org.zvolta:snapshot-hourly", "org.zvolta:snapshot-daily",
+	} {
+		_ = client.InheritProperty(dataset, prop)
+	}
+}
+
 func TestIntegrationListDatasets(t *testing.T) {
 	client := NewClient("")
 	datasets, err := client.ListDatasets()
@@ -34,6 +44,7 @@ func TestIntegrationListDatasets(t *testing.T) {
 
 func TestIntegrationSetGetProperty(t *testing.T) {
 	client := NewClient("")
+	defer cleanProps(t, client, testDataset)
 
 	err := client.SetProperty(testDataset, "org.zvolta:autosnap", "on")
 	if err != nil {
@@ -47,13 +58,12 @@ func TestIntegrationSetGetProperty(t *testing.T) {
 	if val != "on" {
 		t.Errorf("got %q, want %q", val, "on")
 	}
-
-	// Clean up
-	_ = client.SetProperty(testDataset, "org.zvolta:autosnap", "-")
 }
 
 func TestIntegrationGetPropertiesUnset(t *testing.T) {
 	client := NewClient("")
+	cleanProps(t, client, testDataset)
+	cleanProps(t, client, testPool)
 
 	val, err := client.GetProperty(testDataset, "org.zvolta:snapshot-hourly")
 	if err != nil {
@@ -66,13 +76,17 @@ func TestIntegrationGetPropertiesUnset(t *testing.T) {
 
 func TestIntegrationSnapshotLifecycle(t *testing.T) {
 	client := NewClient("")
-	snapName := "zvolta_hourly_2026-03-05T14-00-00Z"
+	snapName := "zvolta_hourly_2024-01-01T00-00-00Z"
+
+	// Clean up in case a previous run left this
+	_ = client.DestroySnapshot(testDataset, snapName)
 
 	// Create
 	err := client.CreateSnapshot(testDataset, snapName)
 	if err != nil {
 		t.Fatalf("CreateSnapshot: %v", err)
 	}
+	defer client.DestroySnapshot(testDataset, snapName)
 
 	// List and verify
 	snaps, err := client.ListSnapshots(testDataset)
@@ -113,13 +127,15 @@ func TestIntegrationSnapshotLifecycle(t *testing.T) {
 
 func TestIntegrationGetPropertiesRecursive(t *testing.T) {
 	client := NewClient("")
+	cleanProps(t, client, testPool)
+	cleanProps(t, client, testDataset)
 
 	// Set property on parent
 	err := client.SetProperty(testPool, "org.zvolta:autosnap", "on")
 	if err != nil {
 		t.Fatalf("SetProperty on pool: %v", err)
 	}
-	defer client.SetProperty(testPool, "org.zvolta:autosnap", "-")
+	defer client.InheritProperty(testPool, "org.zvolta:autosnap")
 
 	results, err := client.GetPropertiesRecursive(testPool, "org.zvolta:autosnap")
 	if err != nil {
@@ -143,7 +159,6 @@ func TestIntegrationCreateSnapshotBadDataset(t *testing.T) {
 		t.Error("expected error for nonexistent dataset")
 	}
 	if !strings.Contains(err.Error(), "does not exist") && !strings.Contains(err.Error(), "not exist") {
-		// Just verify it's an error — exact message varies by ZFS version
 		t.Logf("error (expected): %v", err)
 	}
 }

@@ -21,11 +21,24 @@ func testManager() *Manager {
 	}
 }
 
+// cleanSnapshots destroys all zvolta-managed snapshots on the test dataset.
+func cleanSnapshots(t *testing.T, mgr *Manager) {
+	t.Helper()
+	grouped, _ := mgr.ListManaged(testDataset)
+	for _, snaps := range grouped {
+		for _, s := range snaps {
+			_ = mgr.ZFS.DestroySnapshot(s.Snapshot.Dataset, s.Snapshot.SnapName)
+		}
+	}
+}
+
 func TestIntegrationCreateAndList(t *testing.T) {
 	mgr := testManager()
-	now := time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC)
+	cleanSnapshots(t, mgr)
+	defer cleanSnapshots(t, mgr)
 
-	// Create snapshots across multiple tiers
+	now := time.Date(2025, 1, 1, 10, 0, 0, 0, time.UTC)
+
 	tiers := []Tier{TierHourly, TierDaily}
 	for _, tier := range tiers {
 		if err := mgr.Create(testDataset, tier, now); err != nil {
@@ -33,7 +46,6 @@ func TestIntegrationCreateAndList(t *testing.T) {
 		}
 	}
 
-	// List and verify
 	grouped, err := mgr.ListManaged(testDataset)
 	if err != nil {
 		t.Fatalf("ListManaged: %v", err)
@@ -55,19 +67,15 @@ func TestIntegrationCreateAndList(t *testing.T) {
 			t.Errorf("expected snapshot for tier %s at %v", tier, now)
 		}
 	}
-
-	// Clean up
-	for _, tier := range tiers {
-		name := FormatName("zvolta_", tier, now)
-		_ = mgr.ZFS.DestroySnapshot(testDataset, name)
-	}
 }
 
 func TestIntegrationPrune(t *testing.T) {
 	mgr := testManager()
+	cleanSnapshots(t, mgr)
+	defer cleanSnapshots(t, mgr)
 
-	// Create 5 hourly snapshots
-	base := time.Date(2026, 3, 5, 10, 0, 0, 0, time.UTC)
+	// Use unique timestamps that don't overlap with other tests
+	base := time.Date(2025, 2, 1, 10, 0, 0, 0, time.UTC)
 	for i := 0; i < 5; i++ {
 		ts := base.Add(time.Duration(i) * time.Hour)
 		if err := mgr.Create(testDataset, TierHourly, ts); err != nil {
@@ -75,7 +83,6 @@ func TestIntegrationPrune(t *testing.T) {
 		}
 	}
 
-	// Verify 5 exist
 	grouped, err := mgr.ListManaged(testDataset)
 	if err != nil {
 		t.Fatalf("ListManaged: %v", err)
@@ -84,7 +91,6 @@ func TestIntegrationPrune(t *testing.T) {
 		t.Fatalf("expected 5 hourly snapshots, got %d", len(grouped[TierHourly]))
 	}
 
-	// Prune to keep 2
 	removed, err := mgr.Prune(testDataset, TierHourly, 2, false)
 	if err != nil {
 		t.Fatalf("Prune: %v", err)
@@ -93,7 +99,6 @@ func TestIntegrationPrune(t *testing.T) {
 		t.Errorf("expected 3 removed, got %d", len(removed))
 	}
 
-	// Verify 2 remain (the newest)
 	grouped, err = mgr.ListManaged(testDataset)
 	if err != nil {
 		t.Fatalf("ListManaged after prune: %v", err)
@@ -102,24 +107,20 @@ func TestIntegrationPrune(t *testing.T) {
 		t.Errorf("expected 2 hourly after prune, got %d", len(grouped[TierHourly]))
 	}
 
-	// Verify the remaining are the newest two (13:00 and 14:00)
+	// Verify the remaining are the newest two (13:00 and 14:00 UTC)
 	for _, s := range grouped[TierHourly] {
 		if s.Parsed.Timestamp.Hour() < 13 {
-			t.Errorf("expected only 13:00 and 14:00 to remain, got %v", s.Parsed.Timestamp)
+			t.Errorf("expected only newest to remain, got %v", s.Parsed.Timestamp)
 		}
-	}
-
-	// Clean up remaining
-	for _, s := range grouped[TierHourly] {
-		_ = mgr.ZFS.DestroySnapshot(testDataset, s.Snapshot.SnapName)
 	}
 }
 
 func TestIntegrationDryRun(t *testing.T) {
 	mgr := testManager()
+	cleanSnapshots(t, mgr)
+	defer cleanSnapshots(t, mgr)
 
-	// Create 3 snapshots
-	base := time.Date(2026, 3, 5, 20, 0, 0, 0, time.UTC)
+	base := time.Date(2025, 3, 1, 20, 0, 0, 0, time.UTC)
 	for i := 0; i < 3; i++ {
 		ts := base.Add(time.Duration(i) * time.Hour)
 		if err := mgr.Create(testDataset, TierDaily, ts); err != nil {
@@ -127,7 +128,6 @@ func TestIntegrationDryRun(t *testing.T) {
 		}
 	}
 
-	// Dry-run prune to keep 1
 	removed, err := mgr.Prune(testDataset, TierDaily, 1, true)
 	if err != nil {
 		t.Fatalf("Prune dry-run: %v", err)
@@ -136,7 +136,6 @@ func TestIntegrationDryRun(t *testing.T) {
 		t.Errorf("dry-run should report 2 removals, got %d", len(removed))
 	}
 
-	// Verify all 3 still exist (dry-run shouldn't delete)
 	grouped, err := mgr.ListManaged(testDataset)
 	if err != nil {
 		t.Fatalf("ListManaged: %v", err)
@@ -144,22 +143,25 @@ func TestIntegrationDryRun(t *testing.T) {
 	if len(grouped[TierDaily]) != 3 {
 		t.Errorf("dry-run should not delete, expected 3, got %d", len(grouped[TierDaily]))
 	}
-
-	// Clean up
-	for _, s := range grouped[TierDaily] {
-		_ = mgr.ZFS.DestroySnapshot(testDataset, s.Snapshot.SnapName)
-	}
 }
 
 func TestIntegrationLastSnapshotTimes(t *testing.T) {
 	mgr := testManager()
+	cleanSnapshots(t, mgr)
+	defer cleanSnapshots(t, mgr)
 
-	ts1 := time.Date(2026, 3, 5, 8, 0, 0, 0, time.UTC)
-	ts2 := time.Date(2026, 3, 5, 9, 0, 0, 0, time.UTC)
+	ts1 := time.Date(2025, 4, 1, 8, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2025, 4, 1, 9, 0, 0, 0, time.UTC)
 
-	_ = mgr.Create(testDataset, TierHourly, ts1)
-	_ = mgr.Create(testDataset, TierHourly, ts2)
-	_ = mgr.Create(testDataset, TierDaily, ts1)
+	if err := mgr.Create(testDataset, TierHourly, ts1); err != nil {
+		t.Fatalf("Create hourly ts1: %v", err)
+	}
+	if err := mgr.Create(testDataset, TierHourly, ts2); err != nil {
+		t.Fatalf("Create hourly ts2: %v", err)
+	}
+	if err := mgr.Create(testDataset, TierDaily, ts1); err != nil {
+		t.Fatalf("Create daily ts1: %v", err)
+	}
 
 	times, err := mgr.LastSnapshotTimes(testDataset)
 	if err != nil {
@@ -172,9 +174,4 @@ func TestIntegrationLastSnapshotTimes(t *testing.T) {
 	if !times[TierDaily].Equal(ts1) {
 		t.Errorf("daily last = %v, want %v", times[TierDaily], ts1)
 	}
-
-	// Clean up
-	_ = mgr.ZFS.DestroySnapshot(testDataset, FormatName("zvolta_", TierHourly, ts1))
-	_ = mgr.ZFS.DestroySnapshot(testDataset, FormatName("zvolta_", TierHourly, ts2))
-	_ = mgr.ZFS.DestroySnapshot(testDataset, FormatName("zvolta_", TierDaily, ts1))
 }

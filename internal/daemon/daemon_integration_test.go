@@ -41,7 +41,7 @@ func clearAllProps(t *testing.T, client *zfs.Client) {
 			"org.zvolta:snapshot-weekly", "org.zvolta:snapshot-monthly",
 			"org.zvolta:snapshot-yearly",
 		} {
-			_ = client.SetProperty(ds, prop, "-")
+			_ = client.InheritProperty(ds, prop)
 		}
 	}
 }
@@ -56,10 +56,17 @@ func destroyAllTestSnapshots(t *testing.T, mgr *snapshot.Manager, dataset string
 	}
 }
 
+func cleanAll(t *testing.T, d *Daemon) {
+	t.Helper()
+	clearAllProps(t, d.ZFS)
+	destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	destroyAllTestSnapshots(t, d.Snapshots, testPool)
+}
+
 func TestIntegrationTickCreatesSnapshots(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
-	defer destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	// Enable autosnap with hourly and daily on the dataset
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autosnap", "on")
@@ -88,8 +95,8 @@ func TestIntegrationTickCreatesSnapshots(t *testing.T) {
 
 func TestIntegrationTickIdempotentWithinBoundary(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
-	defer destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autosnap", "on")
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:snapshot-hourly", "24")
@@ -119,8 +126,8 @@ func TestIntegrationTickIdempotentWithinBoundary(t *testing.T) {
 
 func TestIntegrationTickCrossesHourBoundary(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
-	defer destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autosnap", "on")
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:snapshot-hourly", "24")
@@ -148,8 +155,8 @@ func TestIntegrationTickCrossesHourBoundary(t *testing.T) {
 
 func TestIntegrationTickPrunes(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
-	defer destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autosnap", "on")
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autoprune", "on")
@@ -185,8 +192,8 @@ func TestIntegrationTickPrunes(t *testing.T) {
 
 func TestIntegrationTickFrequent(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
-	defer destroyAllTestSnapshots(t, d.Snapshots, testDataset)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:autosnap", "on")
 	setProperty(t, d.ZFS, testDataset, "org.zvolta:snapshot-frequent", "12")
@@ -228,7 +235,8 @@ func TestIntegrationTickFrequent(t *testing.T) {
 
 func TestIntegrationTickDisabledDataset(t *testing.T) {
 	d := setupDaemon(t)
-	defer clearAllProps(t, d.ZFS)
+	cleanAll(t, d)
+	defer cleanAll(t, d)
 
 	// Don't set autosnap — should be disabled by default
 	now := time.Date(2026, 6, 15, 14, 30, 0, 0, time.UTC)
