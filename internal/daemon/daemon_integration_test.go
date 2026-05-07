@@ -5,6 +5,7 @@ package daemon
 import (
 	"log/slog"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -13,11 +14,19 @@ import (
 	"github.com/ndemarco/zvolta/internal/zfs"
 )
 
+func requirePool(t *testing.T, pool string) {
+	t.Helper()
+	if err := exec.Command("zfs", "list", pool).Run(); err != nil {
+		t.Skipf("ZFS pool %q not available (run scripts/test-pool.sh to create it): %v", pool, err)
+	}
+}
+
 const testPool = "zvolta-test"
 const testDataset = "zvolta-test/data"
 
 func setupDaemon(t *testing.T) *Daemon {
 	t.Helper()
+	requirePool(t, testPool)
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	cfg := config.Defaults()
 	cfg.Datasets = []string{testPool}

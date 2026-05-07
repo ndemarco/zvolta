@@ -3,12 +3,20 @@
 package zfs
 
 import (
+	"os/exec"
 	"strings"
 	"testing"
 )
 
 const testPool = "zvolta-test"
 const testDataset = "zvolta-test/data"
+
+func requirePool(t *testing.T, pool string) {
+	t.Helper()
+	if err := exec.Command("zfs", "list", pool).Run(); err != nil {
+		t.Skipf("ZFS pool %q not available (run scripts/test-pool.sh to create it): %v", pool, err)
+	}
+}
 
 func cleanProps(t *testing.T, client *Client, dataset string) {
 	t.Helper()
@@ -21,6 +29,7 @@ func cleanProps(t *testing.T, client *Client, dataset string) {
 }
 
 func TestIntegrationListDatasets(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	datasets, err := client.ListDatasets()
 	if err != nil {
@@ -43,6 +52,7 @@ func TestIntegrationListDatasets(t *testing.T) {
 }
 
 func TestIntegrationSetGetProperty(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	defer cleanProps(t, client, testDataset)
 
@@ -61,6 +71,7 @@ func TestIntegrationSetGetProperty(t *testing.T) {
 }
 
 func TestIntegrationGetPropertiesUnset(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	cleanProps(t, client, testDataset)
 	cleanProps(t, client, testPool)
@@ -75,6 +86,7 @@ func TestIntegrationGetPropertiesUnset(t *testing.T) {
 }
 
 func TestIntegrationSnapshotLifecycle(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	snapName := "zvolta_hourly_2024-01-01T00-00-00Z"
 
@@ -126,6 +138,7 @@ func TestIntegrationSnapshotLifecycle(t *testing.T) {
 }
 
 func TestIntegrationGetPropertiesRecursive(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	cleanProps(t, client, testPool)
 	cleanProps(t, client, testDataset)
@@ -153,6 +166,7 @@ func TestIntegrationGetPropertiesRecursive(t *testing.T) {
 }
 
 func TestIntegrationCreateSnapshotBadDataset(t *testing.T) {
+	requirePool(t, testPool)
 	client := NewClient("")
 	err := client.CreateSnapshot("nonexistent/dataset", "test-snap")
 	if err == nil {

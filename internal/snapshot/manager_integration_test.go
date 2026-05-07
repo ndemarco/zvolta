@@ -5,13 +5,22 @@ package snapshot
 import (
 	"log/slog"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/ndemarco/zvolta/internal/zfs"
 )
 
+const testPool = "zvolta-test"
 const testDataset = "zvolta-test/data"
+
+func requirePool(t *testing.T, pool string) {
+	t.Helper()
+	if err := exec.Command("zfs", "list", pool).Run(); err != nil {
+		t.Skipf("ZFS pool %q not available (run scripts/test-pool.sh to create it): %v", pool, err)
+	}
+}
 
 func testManager() *Manager {
 	return &Manager{
@@ -33,6 +42,7 @@ func cleanSnapshots(t *testing.T, mgr *Manager) {
 }
 
 func TestIntegrationCreateAndList(t *testing.T) {
+	requirePool(t, testPool)
 	mgr := testManager()
 	cleanSnapshots(t, mgr)
 	defer cleanSnapshots(t, mgr)
@@ -70,6 +80,7 @@ func TestIntegrationCreateAndList(t *testing.T) {
 }
 
 func TestIntegrationPrune(t *testing.T) {
+	requirePool(t, testPool)
 	mgr := testManager()
 	cleanSnapshots(t, mgr)
 	defer cleanSnapshots(t, mgr)
@@ -116,6 +127,7 @@ func TestIntegrationPrune(t *testing.T) {
 }
 
 func TestIntegrationDryRun(t *testing.T) {
+	requirePool(t, testPool)
 	mgr := testManager()
 	cleanSnapshots(t, mgr)
 	defer cleanSnapshots(t, mgr)
@@ -146,6 +158,7 @@ func TestIntegrationDryRun(t *testing.T) {
 }
 
 func TestIntegrationLastSnapshotTimes(t *testing.T) {
+	requirePool(t, testPool)
 	mgr := testManager()
 	cleanSnapshots(t, mgr)
 	defer cleanSnapshots(t, mgr)

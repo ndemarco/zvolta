@@ -3,6 +3,7 @@
 package policy
 
 import (
+	"os/exec"
 	"testing"
 
 	"github.com/ndemarco/zvolta/internal/snapshot"
@@ -11,6 +12,13 @@ import (
 
 const testPool = "zvolta-test"
 const testDataset = "zvolta-test/data"
+
+func requirePool(t *testing.T, pool string) {
+	t.Helper()
+	if err := exec.Command("zfs", "list", pool).Run(); err != nil {
+		t.Skipf("ZFS pool %q not available (run scripts/test-pool.sh to create it): %v", pool, err)
+	}
+}
 
 func testEngine() *Engine {
 	return &Engine{ZFS: zfs.NewClient("")}
@@ -33,6 +41,7 @@ func clearProps(t *testing.T, client *zfs.Client, dataset string) {
 }
 
 func TestIntegrationResolve(t *testing.T) {
+	requirePool(t, testPool)
 	engine := testEngine()
 	client := engine.ZFS
 	clearProps(t, client, testPool)
@@ -77,6 +86,7 @@ func TestIntegrationResolve(t *testing.T) {
 }
 
 func TestIntegrationInheritance(t *testing.T) {
+	requirePool(t, testPool)
 	engine := testEngine()
 	client := engine.ZFS
 	clearProps(t, client, testPool)
@@ -117,6 +127,7 @@ func TestIntegrationInheritance(t *testing.T) {
 }
 
 func TestIntegrationResolveAll(t *testing.T) {
+	requirePool(t, testPool)
 	engine := testEngine()
 	client := engine.ZFS
 	clearProps(t, client, testPool)
@@ -153,6 +164,7 @@ func TestIntegrationResolveAll(t *testing.T) {
 }
 
 func TestIntegrationDefaultDisabled(t *testing.T) {
+	requirePool(t, testPool)
 	engine := testEngine()
 	client := engine.ZFS
 	clearProps(t, client, testPool)
