@@ -175,7 +175,11 @@ func (c *Client) ListSnapshots(dataset string) ([]Snapshot, error) {
 		if len(parts) == 2 {
 			// ZFS creation property is a Unix timestamp when using -p, but we
 			// use the human-readable default for now. Parse with reference formats.
-			snap.Creation, _ = parseZFSTime(strings.TrimSpace(parts[1]))
+			t, err := parseZFSTime(strings.TrimSpace(parts[1]))
+			if err != nil {
+				return nil, fmt.Errorf("parsing creation time for %s: %w", fullName, err)
+			}
+			snap.Creation = t
 		}
 		snaps = append(snaps, snap)
 	}

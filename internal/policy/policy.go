@@ -11,6 +11,9 @@ import (
 
 const propertyPrefix = "org.zvolta:"
 
+// minFrequentPeriodMinutes is the smallest allowed frequent snapshot interval.
+const minFrequentPeriodMinutes = 5
+
 // Property names (without the org.zvolta: prefix for internal use).
 const (
 	PropAutoSnap        = "autosnap"
@@ -85,7 +88,7 @@ func (p *Policy) IsEnabled(tier snapshot.Tier) bool {
 		return false
 	}
 	if tier == snapshot.TierFrequent {
-		return p.FrequentPeriod >= 5
+		return p.FrequentPeriod >= minFrequentPeriodMinutes
 	}
 	return true
 }
@@ -148,8 +151,9 @@ func (e *Engine) ResolveAll(rootDataset string) ([]Policy, error) {
 }
 
 func (p *Policy) validate() error {
-	if p.FrequentCount > 0 && p.FrequentPeriod < 5 {
-		return fmt.Errorf("snapshot-frequent-period must be >= 5 minutes when frequent snapshots are enabled; got %d", p.FrequentPeriod)
+	if p.FrequentCount > 0 && p.FrequentPeriod < minFrequentPeriodMinutes {
+		return fmt.Errorf("snapshot-frequent-period must be >= %d minutes when frequent snapshots are enabled; got %d",
+			minFrequentPeriodMinutes, p.FrequentPeriod)
 	}
 	return nil
 }

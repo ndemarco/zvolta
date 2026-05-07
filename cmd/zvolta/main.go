@@ -92,10 +92,12 @@ func statusCmd() *cobra.Command {
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "DATASET\tAUTOSNAP\tAUTOPRUNE\tFREQ\tHOURLY\tDAILY\tWEEKLY\tMONTHLY\tYEARLY")
 
+			var hasError bool
 			for _, root := range cfg.Datasets {
 				policies, err := engine.ResolveAll(root)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "error scanning %s: %v\n", root, err)
+					hasError = true
 					continue
 				}
 				for _, p := range policies {
@@ -109,7 +111,13 @@ func statusCmd() *cobra.Command {
 						p.WeeklyCount, p.MonthlyCount, p.YearlyCount)
 				}
 			}
-			return w.Flush()
+			if err := w.Flush(); err != nil {
+				return err
+			}
+			if hasError {
+				os.Exit(1)
+			}
+			return nil
 		},
 	}
 }

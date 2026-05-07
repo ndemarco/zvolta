@@ -89,7 +89,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Handle signals
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(sigCh)
 
 	d.Logger.Info("zvolta daemon starting",
 		"datasets", d.Config.Datasets,
@@ -114,13 +115,8 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 		case sig := <-sigCh:
 			timer.Stop()
-			switch sig {
-			case syscall.SIGHUP:
-				d.Logger.Info("received SIGHUP, reloading config not yet implemented")
-			case syscall.SIGTERM, syscall.SIGINT:
-				d.Logger.Info("received shutdown signal", "signal", sig.String())
-				return nil
-			}
+			d.Logger.Info("received shutdown signal", "signal", sig.String())
+			return nil
 
 		case now := <-timer.C:
 			if err := d.tick(now); err != nil {
@@ -131,21 +127,30 @@ func (d *Daemon) Run(ctx context.Context) error {
 }
 
 // tick runs one cycle: resolve policies, create due snapshots, prune.
+// Continues on per-dataset errors; returns the first error encountered so the
+// caller knows the tick was not fully successful.
 func (d *Daemon) tick(now time.Time) error {
+	var firstErr error
 	for _, root := range d.Config.Datasets {
 		policies, err := d.Policy.ResolveAll(root)
 		if err != nil {
 			d.Logger.Error("failed to resolve policies", "root", root, "error", err)
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 
-		for _, p := range policies {
-			if err := d.processDataset(&p, now); err != nil {
-				d.Logger.Error("failed to process dataset", "dataset", p.Dataset, "error", err)
+		for i := range policies {
+			if err := d.processDataset(&policies[i], now); err != nil {
+				d.Logger.Error("failed to process dataset", "dataset", policies[i].Dataset, "error", err)
+				if firstErr == nil {
+					firstErr = err
+				}
 			}
 		}
 	}
-	return nil
+	return firstErr
 }
 
 func (d *Daemon) processDataset(p *policy.Policy, now time.Time) error {
