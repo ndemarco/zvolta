@@ -177,3 +177,35 @@ A per-dataset translation spec (the `org.zvolta:naming-algorithm` property) defi
 - Real ZFS operations catch issues that mocks miss
 - File-backed pool is cheap and disposable
 - Keeps unit tests fast and CI-friendly
+
+---
+
+## D15: SIGHUP — Config Reload (fields that are safe vs. require restart)
+
+**Decision:** SIGHUP reloads the config file in place. Fields that are safe to update at runtime (`datasets`, `schedule_offset`, `log_level`, `templates`) are applied immediately. Fields that would corrupt state if changed mid-run (`snapshot_prefix`, `zfs_binary`) are ignored with a warning — they require a full daemon restart.
+
+**Rationale:**
+- `snapshot_prefix` is baked into every snapshot name Zvolta manages. Changing it at runtime would cause the daemon to stop recognising its own snapshots and create duplicates.
+- `zfs_binary` is used for every ZFS call. Changing it mid-run is safe in theory but provides no practical benefit over a restart.
+- Datasets and schedule offsets have no such problem — they affect future scheduling decisions only.
+
+---
+
+## D16: Per-Dataset Schedule Offset — Override Semantics
+
+**Decision:** `org.zvolta:schedule-offset` (Go duration string, e.g. `"5m"`, `"-30s"`) overrides the global `schedule_offset` for that dataset. It does not add to the global offset. Zero / unset means use the global offset.
+
+**Rationale:**
+- Additive semantics (global + per-dataset) are confusing to reason about and hard to zero out.
+- Override semantics are explicit: set the property to get exactly that offset, inherit to use the global default.
+
+---
+
+## D17: Policy Templates — Definition Location and Merge Semantics
+
+**Decision:** Templates are defined in the server config (`[templates.<name>]` sections), not as ZFS datasets. Datasets reference a template via `org.zvolta:template=<name>`. Template property values are the baseline; any dataset-level ZFS property that is not `-` (unset) overrides the template value.
+
+**Rationale:**
+- Templates are infrastructure-level configuration (shared across many datasets), so they belong in the server config, not on individual datasets.
+- Merge-by-override is intuitive: the dataset ZFS property always wins, making it safe to set a template globally and override specific tiers per dataset.
+- A template name that doesn't exist in the server config is a hard error at resolve time, not a silent fallback — prevents misconfiguration from going undetected.

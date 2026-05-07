@@ -26,6 +26,11 @@ type Config struct {
 	// Datasets lists the root datasets Zvolta should manage. Zvolta reads policies
 	// recursively under each root.
 	Datasets []string `toml:"datasets"`
+
+	// Templates defines named policy presets. Datasets reference a template via
+	// org.zvolta:template=<name>; dataset-level ZFS properties override template values.
+	// Template keys are short property names (e.g. "snapshot-hourly", "autosnap").
+	Templates map[string]map[string]string `toml:"templates"`
 }
 
 // Duration wraps time.Duration for TOML string parsing (e.g., "5m", "-30s").

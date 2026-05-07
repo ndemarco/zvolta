@@ -17,3 +17,23 @@
 
 # Root datasets to manage. Zvolta reads policies recursively under each root.
 # datasets = ["tank/data", "tank/home"]
+
+# Policy templates — named presets that datasets can reference via the
+# org.zvolta:template ZFS property. Dataset-level ZFS properties override
+# template values. Template keys are short property names (no org.zvolta: prefix).
+#
+# [templates.standard]
+# autosnap = "on"
+# autoprune = "on"
+# snapshot-hourly = "24"
+# snapshot-daily = "30"
+# snapshot-weekly = "8"
+# snapshot-monthly = "12"
+#
+# [templates.frequent]
+# autosnap = "on"
+# autoprune = "on"
+# snapshot-frequent = "12"
+# snapshot-frequent-period = "5"
+# snapshot-hourly = "24"
+# snapshot-daily = "7"
