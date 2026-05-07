@@ -71,7 +71,7 @@ func daemonCmd() *cobra.Command {
 				return err
 			}
 			logger := newLogger(cfg.LogLevel)
-			d := daemon.New(cfg, logger)
+			d := daemon.New(cfg, configFile, logger)
 			return d.Run(context.Background())
 		},
 	}
@@ -87,7 +87,7 @@ func statusCmd() *cobra.Command {
 				return err
 			}
 			client := zfs.NewClient(cfg.ZFSBinary)
-			engine := &policy.Engine{ZFS: client}
+			engine := &policy.Engine{ZFS: client, Templates: cfg.Templates}
 
 			w := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 			fmt.Fprintln(w, "DATASET\tAUTOSNAP\tAUTOPRUNE\tFREQ\tHOURLY\tDAILY\tWEEKLY\tMONTHLY\tYEARLY")
@@ -203,7 +203,7 @@ func pruneCmd() *cobra.Command {
 			logger := newLogger(cfg.LogLevel)
 			client := zfs.NewClient(cfg.ZFSBinary)
 
-			engine := &policy.Engine{ZFS: client}
+			engine := &policy.Engine{ZFS: client, Templates: cfg.Templates}
 			p, err := engine.Resolve(args[0])
 			if err != nil {
 				return err

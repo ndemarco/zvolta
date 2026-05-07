@@ -15,13 +15,18 @@ type Schedule struct {
 
 // Due returns the list of tiers that need a snapshot taken now, given the
 // policy, current time, and the most recent snapshot time per tier.
+// If the policy has a non-zero ScheduleOffset it overrides the global offset.
 func (s *Schedule) Due(p *policy.Policy, now time.Time, lastSnap map[snapshot.Tier]time.Time) []snapshot.Tier {
+	offset := s.Offset
+	if p.ScheduleOffset != 0 {
+		offset = p.ScheduleOffset
+	}
 	var due []snapshot.Tier
 	for _, tier := range snapshot.AllTiers() {
 		if !p.IsEnabled(tier) {
 			continue
 		}
-		boundary := s.previousBoundary(tier, p, now)
+		boundary := previousBoundary(tier, p, now, offset)
 		last, exists := lastSnap[tier]
 		if !exists || last.Before(boundary) {
 			due = append(due, tier)
@@ -31,11 +36,11 @@ func (s *Schedule) Due(p *policy.Policy, now time.Time, lastSnap map[snapshot.Ti
 }
 
 // previousBoundary returns the most recent clock-aligned boundary for a tier,
-// adjusted by the global offset.
-func (s *Schedule) previousBoundary(tier snapshot.Tier, p *policy.Policy, now time.Time) time.Time {
+// adjusted by the given offset.
+func previousBoundary(tier snapshot.Tier, p *policy.Policy, now time.Time, offset time.Duration) time.Time {
 	// Apply offset: if offset is +5m, we shift the reference time back by 5m
 	// so that boundaries appear 5 minutes later in real time.
-	adjusted := now.UTC().Add(-s.Offset)
+	adjusted := now.UTC().Add(-offset)
 
 	switch tier {
 	case snapshot.TierFrequent:

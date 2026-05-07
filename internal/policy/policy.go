@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ndemarco/zvolta/internal/snapshot"
 	"github.com/ndemarco/zvolta/internal/zfs"
@@ -20,6 +21,8 @@ const (
 	PropAutoPrune       = "autoprune"
 	PropSambaExpose     = "samba-expose"
 	PropNamingAlgorithm = "naming-algorithm"
+	PropTemplate        = "template"
+	PropScheduleOffset  = "schedule-offset"
 	PropFrequent        = "snapshot-frequent"
 	PropFrequentPeriod  = "snapshot-frequent-period"
 	PropHourly          = "snapshot-hourly"
@@ -33,6 +36,7 @@ const (
 func AllProperties() []string {
 	short := []string{
 		PropAutoSnap, PropAutoPrune, PropSambaExpose, PropNamingAlgorithm,
+		PropTemplate, PropScheduleOffset,
 		PropFrequent, PropFrequentPeriod,
 		PropHourly, PropDaily, PropWeekly, PropMonthly, PropYearly,
 	}
@@ -48,6 +52,7 @@ type Policy struct {
 	Dataset        string
 	AutoSnap       bool
 	AutoPrune      bool
+	ScheduleOffset time.Duration // per-dataset offset; zero means use global offset
 	FrequentCount  int
 	FrequentPeriod int // minutes
 	HourlyCount    int
@@ -95,29 +100,51 @@ func (p *Policy) IsEnabled(tier snapshot.Tier) bool {
 
 // Engine resolves policies for datasets by reading ZFS custom properties.
 type Engine struct {
-	ZFS *zfs.Client
+	ZFS       *zfs.Client
+	Templates map[string]map[string]string // from server config; keyed by template name
 }
 
 // Resolve reads ZFS properties for a dataset and returns its effective policy.
 // ZFS handles property inheritance natively — child datasets inherit parent
 // properties unless overridden. We just read the effective value.
+//
+// If org.zvolta:template is set, the named template (from Engine.Templates)
+// provides baseline values. Dataset-level ZFS properties override the template.
 func (e *Engine) Resolve(dataset string) (Policy, error) {
 	props, err := e.ZFS.GetProperties(dataset, AllProperties())
 	if err != nil {
 		return Policy{}, fmt.Errorf("reading properties for %s: %w", dataset, err)
 	}
 
-	p := Policy{Dataset: dataset}
+	// Build effective props: template baseline overridden by dataset ZFS properties.
+	effective := make(map[string]string, len(props))
+	templateName := strings.TrimSpace(props[propertyPrefix+PropTemplate])
+	if templateName != "" && templateName != "-" {
+		tmpl, ok := e.Templates[templateName]
+		if !ok {
+			return Policy{}, fmt.Errorf("dataset %s references unknown template %q", dataset, templateName)
+		}
+		for shortKey, val := range tmpl {
+			effective[propertyPrefix+shortKey] = val
+		}
+	}
+	for k, v := range props {
+		if v != "-" && v != "" {
+			effective[k] = v
+		}
+	}
 
-	p.AutoSnap = parseBool(props[propertyPrefix+PropAutoSnap])
-	p.AutoPrune = parseBool(props[propertyPrefix+PropAutoPrune])
-	p.FrequentCount = parseInt(props[propertyPrefix+PropFrequent])
-	p.FrequentPeriod = parseInt(props[propertyPrefix+PropFrequentPeriod])
-	p.HourlyCount = parseInt(props[propertyPrefix+PropHourly])
-	p.DailyCount = parseInt(props[propertyPrefix+PropDaily])
-	p.WeeklyCount = parseInt(props[propertyPrefix+PropWeekly])
-	p.MonthlyCount = parseInt(props[propertyPrefix+PropMonthly])
-	p.YearlyCount = parseInt(props[propertyPrefix+PropYearly])
+	p := Policy{Dataset: dataset}
+	p.AutoSnap = parseBool(effective[propertyPrefix+PropAutoSnap])
+	p.AutoPrune = parseBool(effective[propertyPrefix+PropAutoPrune])
+	p.FrequentCount = parseInt(effective[propertyPrefix+PropFrequent])
+	p.FrequentPeriod = parseInt(effective[propertyPrefix+PropFrequentPeriod])
+	p.HourlyCount = parseInt(effective[propertyPrefix+PropHourly])
+	p.DailyCount = parseInt(effective[propertyPrefix+PropDaily])
+	p.WeeklyCount = parseInt(effective[propertyPrefix+PropWeekly])
+	p.MonthlyCount = parseInt(effective[propertyPrefix+PropMonthly])
+	p.YearlyCount = parseInt(effective[propertyPrefix+PropYearly])
+	p.ScheduleOffset, _ = parseDuration(effective[propertyPrefix+PropScheduleOffset])
 
 	if err := p.validate(); err != nil {
 		return p, fmt.Errorf("policy for %s: %w", dataset, err)
@@ -156,6 +183,18 @@ func (p *Policy) validate() error {
 			minFrequentPeriodMinutes, p.FrequentPeriod)
 	}
 	return nil
+}
+
+func parseDuration(s string) (time.Duration, bool) {
+	s = strings.TrimSpace(s)
+	if s == "-" || s == "" {
+		return 0, false
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, false
+	}
+	return d, true
 }
 
 func parseBool(s string) bool {

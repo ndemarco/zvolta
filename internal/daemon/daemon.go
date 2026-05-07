@@ -19,21 +19,26 @@ import (
 
 // Daemon is the main snapshot management daemon.
 type Daemon struct {
-	Config    config.Config
-	ZFS       *zfs.Client
-	Policy    *policy.Engine
-	Scheduler *scheduler.Schedule
-	Snapshots *snapshot.Manager
-	Logger    *slog.Logger
+	Config     config.Config
+	ConfigFile string // path to the TOML config file, used for SIGHUP reload
+	ZFS        *zfs.Client
+	Policy     *policy.Engine
+	Scheduler  *scheduler.Schedule
+	Snapshots  *snapshot.Manager
+	Logger     *slog.Logger
 }
 
 // New creates a Daemon from a loaded config.
-func New(cfg config.Config, logger *slog.Logger) *Daemon {
+func New(cfg config.Config, configFile string, logger *slog.Logger) *Daemon {
 	client := zfs.NewClient(cfg.ZFSBinary)
 	return &Daemon{
-		Config:    cfg,
-		ZFS:       client,
-		Policy:    &policy.Engine{ZFS: client},
+		Config:     cfg,
+		ConfigFile: configFile,
+		ZFS:        client,
+		Policy: &policy.Engine{
+			ZFS:       client,
+			Templates: cfg.Templates,
+		},
 		Scheduler: &scheduler.Schedule{Offset: cfg.ScheduleOffset.Duration},
 		Snapshots: &snapshot.Manager{
 			ZFS:    client,
@@ -42,6 +47,34 @@ func New(cfg config.Config, logger *slog.Logger) *Daemon {
 		},
 		Logger: logger,
 	}
+}
+
+// reload re-reads the config file and applies changes that are safe to update
+// without restarting. Fields that require restart (snapshot_prefix, zfs_binary)
+// are ignored with a warning if they differ.
+func (d *Daemon) reload() {
+	cfg, err := config.Load(d.ConfigFile)
+	if err != nil {
+		d.Logger.Error("config reload failed, keeping current config", "error", err)
+		return
+	}
+	if cfg.SnapshotPrefix != d.Config.SnapshotPrefix {
+		d.Logger.Warn("snapshot_prefix change requires daemon restart; ignoring",
+			"current", d.Config.SnapshotPrefix, "new", cfg.SnapshotPrefix)
+		cfg.SnapshotPrefix = d.Config.SnapshotPrefix
+	}
+	if cfg.ZFSBinary != d.Config.ZFSBinary {
+		d.Logger.Warn("zfs_binary change requires daemon restart; ignoring",
+			"current", d.Config.ZFSBinary, "new", cfg.ZFSBinary)
+		cfg.ZFSBinary = d.Config.ZFSBinary
+	}
+	d.Config = cfg
+	d.Scheduler.Offset = cfg.ScheduleOffset.Duration
+	d.Policy.Templates = cfg.Templates
+	d.Logger.Info("config reloaded",
+		"datasets", cfg.Datasets,
+		"offset", cfg.ScheduleOffset.Duration.String(),
+	)
 }
 
 const lockDir = "/var/run/zvolta"
@@ -89,7 +122,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	// Handle signals
 	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
+	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT, syscall.SIGHUP)
 	defer signal.Stop(sigCh)
 
 	d.Logger.Info("zvolta daemon starting",
@@ -115,8 +148,14 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 		case sig := <-sigCh:
 			timer.Stop()
-			d.Logger.Info("received shutdown signal", "signal", sig.String())
-			return nil
+			switch sig {
+			case syscall.SIGHUP:
+				d.Logger.Info("received SIGHUP, reloading config")
+				d.reload()
+			default:
+				d.Logger.Info("received shutdown signal", "signal", sig.String())
+				return nil
+			}
 
 		case now := <-timer.C:
 			if err := d.tick(now); err != nil {
