@@ -21,7 +21,7 @@ go build -o zvolta ./cmd/zvolta
 # Unit tests (no ZFS required)
 go test ./...
 
-# Integration tests (requires ZFS pool — see scripts/test-pool.sh)
+# Integration tests (requires ZFS pool — see scripts/setup-test-pool.sh)
 go test -tags=integration ./...
 ```
 
